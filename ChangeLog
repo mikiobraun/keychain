@@ -1,0 +1,6 @@
+2009-02-26  Mikio Braun  <mikiobraun@gmail.com>
+
+	* Rakefile: rebuild package with new rubygems. The old one still
+	used require_gem.
+	
+

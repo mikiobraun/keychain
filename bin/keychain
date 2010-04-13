@@ -1,0 +1,248 @@
+#!/usr/bin/env ruby
+# -*- ruby -*-
+
+# A simple keychain manager written in ruby
+#
+# Requires the crypt and highline gem
+#
+# Written by Mikio L. Braun, 2008
+
+require 'yaml'
+require 'rubygems'
+require 'crypt/blowfish'
+require 'highline/import'
+
+class KeyChain
+  FILENAME = File.join(ENV['HOME'], '.keychain')
+
+  def initialize
+    @keychain = {}
+  end
+
+  def load
+    if test ?f, FILENAME
+      @crypt = get_crypt
+      s = File.open(FILENAME) do |f| 
+        @crypt.decrypt_string(f.read)
+      end
+      begin
+        @keychain = YAML::load(s)
+        raise 'ups' unless Hash === @keychain        
+      rescue
+        puts "Wrong password."
+        exit       
+      end
+    else
+      puts "Couldn't find keychain. Enter initial password!"
+      @crypt = get_new_crypt
+      save
+      File.chmod 0600, FILENAME
+    end
+  end
+  
+  def save
+    s = YAML::dump(@keychain)
+    File.open(FILENAME, 'w') do |f| 
+      f.write(@crypt.encrypt_string(s))
+    end
+  end
+
+  def store(id, user, passwd)
+    if @keychain.member? id
+      if ask("overwriting \"#{id}\"? ") != 'y'
+        puts "Did not overwrite"
+        return
+      end
+    end
+    @keychain[id] = [user, passwd]
+  end
+
+  def print(pat=nil)
+    puts "id                   | login                     | password"
+    puts "---------------------+---------------------------+----------------------"
+    pat ||= /.*/
+    @keychain.keys.grep(pat).sort.each do |id|
+      printf "%-20s | %-25s | %-15s\n",  id, @keychain[id][0], @keychain[id][1]
+    end
+  end
+
+  def rename(id_old, id_new)
+    unless @keychain.member? id_old
+      puts "Cannot find key \"#{id_old}\""
+      return
+    end
+
+    if @keychain.member? id_new
+      puts "New id \"#{id_new}\" already exists!"
+      return
+    end
+
+    @keychain[id_new] = @keychain[id_old]
+    @keychain.delete id_old
+  end
+
+  def delete(id)
+    unless @keychain.member? id_old
+      puts "Cannot find key \"#{id_old}\""
+      return
+    end
+
+    @keychain.delete id
+  end
+
+  def password
+    @crypt = get_new_crypt
+    save
+  end
+
+  # generate a random password using a markov chain on 
+  # vowels and consonants to produce pronouncable passwords.
+  def generate_password(l)
+    vow = %w(a e i o u)
+    con = %w(b c d f g h j k l m n p q r s t v x y z)
+
+    pw = ''
+    state = if rand < 0.8 then :c else :v end
+    for i in 0..l
+      case state
+      when :v
+        pw << vow[rand(vow.size)]
+        state = :c if rand > 0.4
+      when :c
+        pw << con[rand(con.size)]
+        state = :v if rand > 0.1
+      end
+    end
+    return pw
+  end
+
+  def export(out)
+    YAML::dump(@keychain, out)
+  end
+private
+  def get_new_crypt
+    password = ask('new password> ') {|q| q.echo = false}
+    retyped = ask('retype password> ') {|q| q.echo = false}
+    if password != retyped
+      puts "Passwords did not match."
+      exit
+    end
+    Crypt::Blowfish.new password
+  end
+
+  def get_crypt
+    password = ask('password> ') {|q| q.echo = false}
+    Crypt::Blowfish.new password
+  end
+end
+
+Help = <<EOS
+Usage: keychain command [args]
+
+Commands:
+
+help                 - print this help
+print [pattern]      - print entries matching pattern (patterin is full
+                       regular expression. In particular '.*' matches
+                       everything, not '*'
+store id user key    - add an entry. If key == ?, generates random password
+delete id            - delete entry
+rename id_new id_old - rename an entry
+password             - change master password
+export [file]	     - export passwords to stdout or file
+
+Version 0.2.2 - August 21, 2008
+EOS
+
+if ARGV.size == 0
+  ARGV << 'interactive'
+end
+
+def cmd(kc, args)
+  case args[0]
+  when 'print'
+    if args.size == 2
+      kc.print(Regexp.new(args[1]))
+    else
+      kc.print
+    end
+  when 'store'
+    if args.size < 4
+      puts "Format is \"add id user key\""
+      return
+    end
+    if args[3] == '?'
+      l = ask('password length? ').to_i
+      if l > 0
+        ok = false
+        pw = nil
+        until ok
+          pw = kc.generate_password(l)
+          puts "Generated password: #{pw}"
+          case ask('okay (ynq)? ')
+          when 'y'
+            ok = true
+          when 'q'
+            pw = nil
+            break
+          end
+        end
+        return unless pw
+        kc.store(args[1], args[2], pw)
+      end
+    else
+      kc.store(args[1], args[2], args[3])
+    end
+    kc.save
+  when 'delete'
+    if args.size < 1
+      puts "Which id do you want to delete?"
+    end
+    kc.delete(args[1])
+    kc.save
+  when 'rename'
+    if args.size < 2
+      puts "Format is \"rename id_old id_new\""
+    end
+    kc.rename(args[1], args[2])
+    kc.save
+  when 'help'
+    puts Help
+  when 'password'
+    kc.password
+  when 'gen'
+    puts kc.generate_password(args[1].to_i)
+  when 'export'
+    if args.size < 2
+      kc.export($stdout)
+    else
+      open(args[1], 'w') {|o| kc.export(o)}
+    end
+  else
+    puts "Didn't understand command"
+    return
+  end
+end
+
+kc = KeyChain.new
+if ARGV[0] == 'interactive'
+  puts "Entering interactive mode. Enter password. Then type 'exit' or an empty line to quite."
+  kc.load
+  while true
+    begin
+      s = ask('keychain> ')
+      if s == 'exit' or s == ''
+        exit
+      end
+      cmd(kc, s.split(' '))
+    rescue EOFError
+      puts "quitting..."
+      exit
+    rescue
+      raise
+    end
+  end
+else
+  kc.load unless ARGV[0] == 'help' or ARGV[0] == 'gen'
+  cmd(kc, ARGV)
+end

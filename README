@@ -1,0 +1,34 @@
+keychain is a very simple command line tool for managing passwords
+
+Features include:
+
+- passwords are stored in the blowfish encrypted file $HOME/.keychain
+- search for entries using regular expressions
+- automatically generates more or less pronouncable random passwords
+
+Usage is very simple, you either start keychain without any arguments
+to enter an interactive mode or directly supply the command on the
+command line. Commands are:
+
+help                 - print this help
+print [pattern]      - print entries matching pattern (patterin is full
+                       regular expression. In particular '.*' matches
+                       everything, not '*'
+store id user key    - add an entry. If key == ?, generates random password
+delete id            - delete entry
+rename id_new id_old - rename an entry
+password             - change master password
+
+Now, although I'm using this script for managing my own passwords you
+should carefully read the following disclaimer:
+
+THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT ANY GUARANTEES TO ITS
+SUITEDNESS FOR ANY PARTICULAR USE. IN PARTICULAR, I CANNOT GUARANTEE
+THAT THIS SCRIPT WILL NOT ACCIDENTALLY FORGETS YOUR PASSWORDS, OR THAT
+THE DATA IS ENCRYPTED IN A FASHION WHICH CANNOT BE CRACKED. THEREFORE,
+KEEP YOUR $HOME/.keychain PRIVATE, AND REGULARY MAKE SURE TO STORE
+YOUR PASSWORDS SOMEWHERE ELSE. ALSO MAKE SURE THAT YOU DO NOT FORGET
+YOUR MASTER PASSWORD!
+
+On the other hand, if you have ideas how to improve the security and
+the cryptologic strength of the encoding, I'd be happy to know!
